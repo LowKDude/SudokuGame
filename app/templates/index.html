@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sudoku Game</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Sudoku Game</h1>
+        <form id="start-game-form">
+            <input type="text" id="username" placeholder="Enter your name" required>
+            <select id="difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select>
+            <button type="submit">Start Game</button>
+        </form>
+        <button id="fetch-games-button">Show Previous Games</button>
+        <button id="hide-games-button" style="display:none;">Hide Previous Games</button>
+        <div id="previous-games" style="display:none;"></div>
+        <div class="sudoku-grid" id="sudoku-grid"></div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#start-game-form').submit(function(event) {
+                event.preventDefault();
+                var username = $('#username').val();
+                var difficulty = $('#difficulty').val();
+                $.ajax({
+                    url: '/start',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({username: username, difficulty: difficulty}),
+                    success: function(data) {
+                        // Render Sudoku grid
+                        renderSudokuGrid(data.grid);
+                    }
+                });
+            });
+
+            $('#fetch-games-button').click(function() {
+                $.ajax({
+                    url: '/previous_games',
+                    type: 'GET',
+                    success: function(data) {
+                        displayPreviousGames(data);
+                    }
+                });
+            });
+
+            $('#hide-games-button').click(function() {
+                $('#previous-games').hide();
+                $('#hide-games-button').hide();
+                $('#fetch-games-button').show();
+            });
+
+            function renderSudokuGrid(grid) {
+                var gridHtml = '';
+                for (var i = 0; i < 9; i++) {
+                    for (var j = 0; j < 9; j++) {
+                        var cellClass = grid[i][j] === 0 ? 'sudoku-cell editable-cell' : 'sudoku-cell fixed-cell';
+                        var cellValue = grid[i][j] === 0 ? '' : grid[i][j];
+                        gridHtml += `<input type="text" class="${cellClass}" maxlength="1" value="${cellValue}" data-row="${i}" data-col="${j}" ${cellClass === 'fixed-cell' ? 'readonly' : ''}>`;
+                    }
+                }
+                $('#sudoku-grid').html(gridHtml);
+
+                // Attach event listeners for input validation
+                $('.editable-cell').on('input', function() {
+                    var $cell = $(this);
+                    var row = $cell.data('row');
+                    var col = $cell.data('col');
+                    var value = $cell.val();
+                    validateCell($cell, row, col, value);
+                });
+            }
+
+            function validateCell($cell, row, col, value) {
+                // Clear previous validation styles
+                $cell.removeClass('invalid-cell');
+
+                if (value === '') {
+                    // Prevent deletion of prefilled cells
+                    if ($cell.hasClass('fixed-cell')) {
+                        $cell.val($cell.attr('value'));
+                    }
+                    return;
+                }
+
+                $.ajax({
+                    url: '/validate_move',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({grid: gatherGridData(), row: row, col: col, num: parseInt(value)}),
+                    success: function(response) {
+                        if (!response.valid) {
+                            $cell.addClass('invalid-cell');
+                        }
+                    }
+                });
+            }
+
+            function gatherGridData() {
+                var grid = [];
+                $('#sudoku-grid input').each(function(index) {
+                    var row = Math.floor(index / 9);
+                    var col = index % 9;
+                    if (!grid[row]) {
+                        grid[row] = [];
+                    }
+                    grid[row][col] = $(this).val() === '' ? 0 : parseInt($(this).val());
+                });
+                return grid;
+            }
+
+            function displayPreviousGames(games) {
+                var gamesHtml = '<h2>Previous Games</h2><table><tr><th>ID</th><th>Username</th><th>Difficulty</th><th>Start Time</th><th>End Time</th></tr>';
+                games.forEach(function(game) {
+                    gamesHtml += `<tr>
+                        <td>${game.id}</td>
+                        <td>${game.username}</td>
+                        <td>${game.difficulty}</td>
+                        <td>${game.start_time}</td>
+                        <td>${game.end_time || 'In Progress'}</td>
+                    </tr>`;
+                });
+                gamesHtml += '</table>';
+                $('#previous-games').html(gamesHtml).show();
+                $('#fetch-games-button').hide();
+                $('#hide-games-button').show();
+            }
+        });
+    </script>
+</body>
+</html>
